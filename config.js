@@ -6,5 +6,8 @@ const FORM_DATA = {
   "lastName": "Doe",
   "email": "john@example.com",
   "phone": "555-123-4567",
-  "agreeTerms": true
+  "agreeTerms": true,
+  "F_F6ABBC08:D_1_1": true,
+  "F_F6ABBC08:D_1_6": "Royce Zhou",
+  "F_F6ABBC08:D_1_2": true
 };
