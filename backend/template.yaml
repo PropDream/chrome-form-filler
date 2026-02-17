@@ -1,0 +1,54 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: Backend API for Chrome Form Filler - serves form data from S3
+
+Globals:
+  Function:
+    Timeout: 10
+    Runtime: nodejs20.x
+
+Resources:
+  FormDataBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "form-filler-data-${AWS::AccountId}"
+
+  GetFormDataFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: index.handler
+      CodeUri: src/
+      Environment:
+        Variables:
+          BUCKET_NAME: !Ref FormDataBucket
+          OBJECT_KEY: form-data.json
+      Policies:
+        - S3ReadPolicy:
+            BucketName: !Ref FormDataBucket
+      Events:
+        GetFormData:
+          Type: HttpApi
+          Properties:
+            Path: /form-data
+            Method: GET
+            ApiId: !Ref FormDataApi
+
+  FormDataApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      CorsConfiguration:
+        AllowOrigins:
+          - "*"
+        AllowMethods:
+          - GET
+          - OPTIONS
+        AllowHeaders:
+          - Content-Type
+
+Outputs:
+  ApiEndpoint:
+    Description: API Gateway endpoint URL
+    Value: !Sub "https://${FormDataApi}.execute-api.${AWS::Region}.amazonaws.com/form-data"
+  BucketName:
+    Description: S3 bucket name for form data
+    Value: !Ref FormDataBucket

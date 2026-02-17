@@ -1,4 +1,4 @@
-(async () => {
+async function fillForm(FORM_DATA) {
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
   let filled = 0;
@@ -53,4 +53,4 @@
   }
 
   return { filled, skipped, details };
-})();
+}
