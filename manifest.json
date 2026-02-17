@@ -1,0 +1,10 @@
+{
+  "manifest_version": 3,
+  "name": "Form Auto-Filler",
+  "version": "1.0",
+  "description": "Fills form inputs on the current tab using a hardcoded dictionary of element IDs and values.",
+  "permissions": ["activeTab", "scripting"],
+  "action": {
+    "default_popup": "popup.html"
+  }
+}
