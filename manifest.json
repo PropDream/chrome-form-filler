@@ -5,8 +5,9 @@
   "description": "Fills form inputs on the current tab using a hardcoded dictionary of element IDs and values.",
   "permissions": ["activeTab", "scripting", "storage"],
   "host_permissions": [
-    "https://*.execute-api.*.amazonaws.com/*",
-    "http://proply-backend-alb-1624948625.us-west-1.elb.amazonaws.com/*"
+    "http://proply-backend-alb-1624948625.us-west-1.elb.amazonaws.com/*",
+    "https://*.s3.amazonaws.com/*",
+    "https://*.s3.*.amazonaws.com/*"
   ],
   "action": {
     "default_popup": "popup.html"

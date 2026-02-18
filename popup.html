@@ -140,19 +140,31 @@
       white-space: nowrap;
       max-width: 200px;
     }
-    .fill-file-btn {
+    .file-actions {
+      display: flex;
+      gap: 4px;
+      flex-shrink: 0;
+    }
+    .fill-file-btn, .clear-file-btn {
       width: auto;
       padding: 2px 8px;
       font-size: 11px;
-      background: #4285f4;
       color: white;
       border: none;
       border-radius: 3px;
       cursor: pointer;
-      flex-shrink: 0;
+    }
+    .fill-file-btn {
+      background: #4285f4;
     }
     .fill-file-btn:hover {
       background: #3367d6;
+    }
+    .clear-file-btn {
+      background: #888;
+    }
+    .clear-file-btn:hover {
+      background: #666;
     }
     .no-files {
       font-size: 12px;
@@ -179,8 +191,6 @@
       <span id="userEmail"></span>
       <button id="logoutBtn">Logout</button>
     </div>
-    <button id="fillBtn">Fill Form</button>
-
     <!-- User Files -->
     <div id="filesSection">
       <div id="filesLoading" style="display: none;">Loading files...</div>
