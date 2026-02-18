@@ -1,18 +1,13 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
-Description: Backend API for Chrome Form Filler - serves form data from S3
+Description: Backend API for Chrome Form Filler - fetches form data from proply-backend
 
 Globals:
   Function:
-    Timeout: 10
+    Timeout: 30
     Runtime: nodejs20.x
 
 Resources:
-  FormDataBucket:
-    Type: AWS::S3::Bucket
-    Properties:
-      BucketName: !Sub "form-filler-data-${AWS::AccountId}"
-
   GetFormDataFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -20,17 +15,13 @@ Resources:
       CodeUri: src/
       Environment:
         Variables:
-          BUCKET_NAME: !Ref FormDataBucket
-          OBJECT_KEY: form-data.json
-      Policies:
-        - S3ReadPolicy:
-            BucketName: !Ref FormDataBucket
+          PROPLY_DOWNLOAD_URL: "http://proply-backend-alb-1624948625.us-west-1.elb.amazonaws.com/files/download"
       Events:
         GetFormData:
           Type: HttpApi
           Properties:
             Path: /form-data
-            Method: GET
+            Method: POST
             ApiId: !Ref FormDataApi
 
   FormDataApi:
@@ -40,7 +31,7 @@ Resources:
         AllowOrigins:
           - "*"
         AllowMethods:
-          - GET
+          - POST
           - OPTIONS
         AllowHeaders:
           - Content-Type
@@ -49,6 +40,3 @@ Outputs:
   ApiEndpoint:
     Description: API Gateway endpoint URL
     Value: !Sub "https://${FormDataApi}.execute-api.${AWS::Region}.amazonaws.com/form-data"
-  BucketName:
-    Description: S3 bucket name for form data
-    Value: !Ref FormDataBucket
