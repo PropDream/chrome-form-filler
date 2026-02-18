@@ -102,16 +102,24 @@ async function fetchAndDisplayFiles(userId) {
       html += '<div class="project-group">';
       html += `<div class="project-header">${escapeHtml(project)} <span class="file-count">(${projectFiles.length})</span></div>`;
       for (const file of projectFiles) {
-        const typeLabel = formatFileType(file.file_type);
-        html += `<div class="file-item">
+        html += `<div class="file-item" data-file-id="${escapeHtml(file.file_id)}">
           <span class="file-name" title="${escapeHtml(file.file_name)}">${escapeHtml(file.file_name)}</span>
-          <span class="file-type">${typeLabel}</span>
+          <button class="fill-file-btn" title="Fill form with this file">Fill</button>
         </div>`;
       }
       html += "</div>";
     }
 
     filesList.innerHTML = html;
+
+    // Attach click handlers to fill buttons
+    filesList.querySelectorAll(".fill-file-btn").forEach(btn => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const fileId = btn.closest(".file-item").dataset.fileId;
+        fillFormWithFile(userId, fileId);
+      });
+    });
   } catch (err) {
     filesList.innerHTML = `<div class="no-files" style="color:#d32f2f;">${escapeHtml(err.message)}</div>`;
   } finally {
@@ -119,20 +127,48 @@ async function fetchAndDisplayFiles(userId) {
   }
 }
 
-function formatFileType(type) {
-  const map = {
-    UserUpload: "Upload",
-    Generated: "Generated",
-    Download: "Download",
-    FillForm: "Form Fill"
-  };
-  return map[type] || type || "—";
-}
-
 function escapeHtml(str) {
   const div = document.createElement("div");
   div.textContent = str || "";
   return div.innerHTML;
+}
+
+// --- Fill Form with a specific file ---
+
+async function fillFormWithFile(userId, fileId) {
+  statusEl.textContent = "Fetching form data...";
+
+  try {
+    const response = await fetch(API_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user_id: userId, file_id: fileId })
+    });
+
+    if (!response.ok) {
+      throw new Error(`API returned ${response.status}: ${response.statusText}`);
+    }
+    const formData = await response.json();
+
+    statusEl.textContent = "Filling...";
+
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+
+    const results = await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: fillForm,
+      args: [formData]
+    });
+
+    const result = results[0]?.result;
+    if (result) {
+      statusEl.textContent = `Done! Filled: ${result.filled}, Skipped: ${result.skipped}\n${result.details.join("\n")}`;
+    } else {
+      statusEl.textContent = "Done (no result returned).";
+    }
+  } catch (err) {
+    statusEl.textContent = "Error: " + err.message;
+  }
 }
 
 // --- Initialize ---
@@ -206,7 +242,7 @@ logoutBtn.addEventListener("click", async () => {
   showLoggedOut();
 });
 
-// --- Fill Form (only available when logged in) ---
+// --- Fill Form button (uses first available file as fallback) ---
 
 fillBtn.addEventListener("click", async () => {
   statusEl.textContent = "Fetching form data...";
@@ -219,28 +255,15 @@ fillBtn.addEventListener("click", async () => {
       return;
     }
 
-    const response = await fetch(API_URL);
-    if (!response.ok) {
-      throw new Error(`API returned ${response.status}: ${response.statusText}`);
+    // Find the first file item in the list to use
+    const firstFileItem = filesList.querySelector(".file-item[data-file-id]");
+    if (!firstFileItem) {
+      statusEl.textContent = "No form fill files available. Upload one first.";
+      return;
     }
-    const formData = await response.json();
 
-    statusEl.textContent = "Filling...";
-
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-
-    const results = await chrome.scripting.executeScript({
-      target: { tabId: tab.id },
-      func: fillForm,
-      args: [formData]
-    });
-
-    const result = results[0]?.result;
-    if (result) {
-      statusEl.textContent = `Done! Filled: ${result.filled}, Skipped: ${result.skipped}\n${result.details.join("\n")}`;
-    } else {
-      statusEl.textContent = "Done (no result returned).";
-    }
+    const fileId = firstFileItem.dataset.fileId;
+    await fillFormWithFile(userId, fileId);
   } catch (err) {
     statusEl.textContent = "Error: " + err.message;
   }
