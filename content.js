@@ -1,3 +1,53 @@
+async function clearForm(FORM_DATA) {
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  let cleared = 0;
+  let skipped = 0;
+  const details = [];
+
+  for (const [id, value] of Object.entries(FORM_DATA)) {
+    const el = document.getElementById(id);
+    if (!el) {
+      skipped++;
+      details.push(`${id}: not found`);
+      continue;
+    }
+
+    if (typeof value === "boolean") {
+      // Uncheck: only click if currently checked (value is "X")
+      if (el.value !== "X") {
+        skipped++;
+        details.push(`${id}: already unchecked, skipped`);
+        continue;
+      }
+      el.click();
+    } else {
+      // Clear text: only clear if not already empty
+      if (el.value === "") {
+        skipped++;
+        details.push(`${id}: already empty, skipped`);
+        continue;
+      }
+      el.click();
+      el.focus();
+      el.dispatchEvent(new KeyboardEvent("keydown", { key: "a", code: "KeyA", ctrlKey: true, bubbles: true }));
+      el.select();
+      el.dispatchEvent(new KeyboardEvent("keyup", { key: "a", code: "KeyA", ctrlKey: true, bubbles: true }));
+      el.dispatchEvent(new KeyboardEvent("keydown", { key: "Backspace", code: "Backspace", bubbles: true }));
+      el.value = "";
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+      el.dispatchEvent(new KeyboardEvent("keyup", { key: "Backspace", code: "Backspace", bubbles: true }));
+      el.dispatchEvent(new Event("change", { bubbles: true }));
+      await sleep(50);
+    }
+
+    cleared++;
+    details.push(`${id}: cleared`);
+  }
+
+  return { cleared, skipped, details };
+}
+
 async function fillForm(FORM_DATA) {
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 

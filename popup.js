@@ -1,8 +1,7 @@
 const BASE_URL = "http://proply-backend-alb-1624948625.us-west-1.elb.amazonaws.com";
 const LOGIN_URL = `${BASE_URL}/users/login`;
 const FILES_QUERY_URL = `${BASE_URL}/files/query`;
-// TODO: Replace with your API Gateway endpoint URL after deploying the SAM backend
-const API_URL = "https://YOUR_API_ID.execute-api.YOUR_REGION.amazonaws.com/form-data";
+const FILES_DOWNLOAD_URL = `${BASE_URL}/files/download`;
 
 const loginSection = document.getElementById("loginSection");
 const loggedInSection = document.getElementById("loggedInSection");
@@ -12,10 +11,24 @@ const emailInput = document.getElementById("email");
 const passwordInput = document.getElementById("password");
 const loginError = document.getElementById("loginError");
 const userEmailSpan = document.getElementById("userEmail");
-const fillBtn = document.getElementById("fillBtn");
 const statusEl = document.getElementById("status");
 const filesLoading = document.getElementById("filesLoading");
 const filesList = document.getElementById("filesList");
+
+// --- Debug Logging ---
+
+async function debugFetch(url, options = {}) {
+  const method = options.method || "GET";
+  const body = options.body ? JSON.parse(options.body) : undefined;
+  console.log(`[proply] --> ${method} ${url}`, body || "");
+
+  const response = await fetch(url, options);
+  const clone = response.clone();
+  const responseBody = await clone.json().catch(() => clone.text());
+  console.log(`[proply] <-- ${response.status} ${url}`, responseBody);
+
+  return response;
+}
 
 // --- UI State ---
 
@@ -64,7 +77,7 @@ async function fetchAndDisplayFiles(userId) {
   filesList.innerHTML = "";
 
   try {
-    const response = await fetch(FILES_QUERY_URL, {
+    const response = await debugFetch(FILES_QUERY_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ user_id: userId })
@@ -104,7 +117,10 @@ async function fetchAndDisplayFiles(userId) {
       for (const file of projectFiles) {
         html += `<div class="file-item" data-file-id="${escapeHtml(file.file_id)}">
           <span class="file-name" title="${escapeHtml(file.file_name)}">${escapeHtml(file.file_name)}</span>
-          <button class="fill-file-btn" title="Fill form with this file">Fill</button>
+          <span class="file-actions">
+            <button class="fill-file-btn" title="Fill form with this file">Fill</button>
+            <button class="clear-file-btn" title="Clear form fields for this file">Clear</button>
+          </span>
         </div>`;
       }
       html += "</div>";
@@ -112,12 +128,19 @@ async function fetchAndDisplayFiles(userId) {
 
     filesList.innerHTML = html;
 
-    // Attach click handlers to fill buttons
+    // Attach click handlers to fill and clear buttons
     filesList.querySelectorAll(".fill-file-btn").forEach(btn => {
       btn.addEventListener("click", (e) => {
         e.stopPropagation();
         const fileId = btn.closest(".file-item").dataset.fileId;
         fillFormWithFile(userId, fileId);
+      });
+    });
+    filesList.querySelectorAll(".clear-file-btn").forEach(btn => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const fileId = btn.closest(".file-item").dataset.fileId;
+        clearFormWithFile(userId, fileId);
       });
     });
   } catch (err) {
@@ -136,19 +159,32 @@ function escapeHtml(str) {
 // --- Fill Form with a specific file ---
 
 async function fillFormWithFile(userId, fileId) {
-  statusEl.textContent = "Fetching form data...";
+  statusEl.textContent = "Getting download URL...";
 
   try {
-    const response = await fetch(API_URL, {
+    // Step 1: Get presigned download URL from proply-backend
+    const dlResponse = await debugFetch(FILES_DOWNLOAD_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ user_id: userId, file_id: fileId })
     });
 
-    if (!response.ok) {
-      throw new Error(`API returned ${response.status}: ${response.statusText}`);
+    if (!dlResponse.ok) {
+      throw new Error(`Download request failed (${dlResponse.status})`);
     }
-    const formData = await response.json();
+
+    const { download_url } = await dlResponse.json();
+    if (!download_url) {
+      throw new Error("No download URL returned.");
+    }
+
+    // Step 2: Fetch the actual file content from the presigned S3 URL
+    statusEl.textContent = "Downloading form data...";
+    const fileResponse = await fetch(download_url);
+    if (!fileResponse.ok) {
+      throw new Error(`File download failed (${fileResponse.status})`);
+    }
+    const formData = await fileResponse.json();
 
     statusEl.textContent = "Filling...";
 
@@ -163,6 +199,57 @@ async function fillFormWithFile(userId, fileId) {
     const result = results[0]?.result;
     if (result) {
       statusEl.textContent = `Done! Filled: ${result.filled}, Skipped: ${result.skipped}\n${result.details.join("\n")}`;
+    } else {
+      statusEl.textContent = "Done (no result returned).";
+    }
+  } catch (err) {
+    statusEl.textContent = "Error: " + err.message;
+  }
+}
+
+// --- Clear Form with a specific file ---
+
+async function clearFormWithFile(userId, fileId) {
+  statusEl.textContent = "Getting download URL...";
+
+  try {
+    // Step 1: Get presigned download URL to know which keys to clear
+    const dlResponse = await debugFetch(FILES_DOWNLOAD_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user_id: userId, file_id: fileId })
+    });
+
+    if (!dlResponse.ok) {
+      throw new Error(`Download request failed (${dlResponse.status})`);
+    }
+
+    const { download_url } = await dlResponse.json();
+    if (!download_url) {
+      throw new Error("No download URL returned.");
+    }
+
+    // Step 2: Fetch the file to get the form keys
+    statusEl.textContent = "Downloading form data...";
+    const fileResponse = await fetch(download_url);
+    if (!fileResponse.ok) {
+      throw new Error(`File download failed (${fileResponse.status})`);
+    }
+    const formData = await fileResponse.json();
+
+    statusEl.textContent = "Clearing...";
+
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+
+    const results = await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: clearForm,
+      args: [formData]
+    });
+
+    const result = results[0]?.result;
+    if (result) {
+      statusEl.textContent = `Cleared! Cleared: ${result.cleared}, Skipped: ${result.skipped}\n${result.details.join("\n")}`;
     } else {
       statusEl.textContent = "Done (no result returned).";
     }
@@ -199,7 +286,7 @@ loginBtn.addEventListener("click", async () => {
   loginError.style.display = "none";
 
   try {
-    const response = await fetch(LOGIN_URL, {
+    const response = await debugFetch(LOGIN_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, password })
@@ -242,29 +329,3 @@ logoutBtn.addEventListener("click", async () => {
   showLoggedOut();
 });
 
-// --- Fill Form button (uses first available file as fallback) ---
-
-fillBtn.addEventListener("click", async () => {
-  statusEl.textContent = "Fetching form data...";
-
-  try {
-    const { userId } = await getAuthState();
-    if (!userId) {
-      statusEl.textContent = "Not logged in.";
-      showLoggedOut();
-      return;
-    }
-
-    // Find the first file item in the list to use
-    const firstFileItem = filesList.querySelector(".file-item[data-file-id]");
-    if (!firstFileItem) {
-      statusEl.textContent = "No form fill files available. Upload one first.";
-      return;
-    }
-
-    const fileId = firstFileItem.dataset.fileId;
-    await fillFormWithFile(userId, fileId);
-  } catch (err) {
-    statusEl.textContent = "Error: " + err.message;
-  }
-});
