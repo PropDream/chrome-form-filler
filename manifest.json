@@ -3,12 +3,15 @@
   "name": "Form Auto-Filler",
   "version": "1.0",
   "description": "Fills form inputs on the current tab using a hardcoded dictionary of element IDs and values.",
-  "permissions": ["activeTab", "scripting", "storage"],
+  "permissions": ["activeTab", "scripting", "storage", "nativeMessaging"],
   "host_permissions": [
     "http://proply-backend-alb-1624948625.us-west-1.elb.amazonaws.com/*",
     "https://*.s3.amazonaws.com/*",
     "https://*.s3.*.amazonaws.com/*"
   ],
+  "background": {
+    "service_worker": "background.js"
+  },
   "action": {
     "default_popup": "popup.html"
   }

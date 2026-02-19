@@ -156,6 +156,20 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
+// --- Send keystrokes via native messaging (through background.js) ---
+
+function sendKeystroke(text) {
+  return new Promise((resolve) => {
+    chrome.runtime.sendMessage({ action: "type", text }, (response) => {
+      if (chrome.runtime.lastError) {
+        resolve({ status: "error", message: chrome.runtime.lastError.message });
+      } else {
+        resolve(response);
+      }
+    });
+  });
+}
+
 // --- Fill Form with a specific file ---
 
 async function fillFormWithFile(userId, fileId) {
@@ -186,22 +200,60 @@ async function fillFormWithFile(userId, fileId) {
     }
     const formData = await fileResponse.json();
 
-    statusEl.textContent = "Filling...";
-
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    const entries = Object.entries(formData);
+    let filled = 0;
+    let skipped = 0;
+    const details = [];
 
-    const results = await chrome.scripting.executeScript({
-      target: { tabId: tab.id },
-      func: fillForm,
-      args: [formData]
-    });
+    // Step 3: Process each field one at a time
+    for (let i = 0; i < entries.length; i++) {
+      const [id, value] = entries[i];
+      statusEl.textContent = `Filling field ${i + 1}/${entries.length}: ${id}`;
 
-    const result = results[0]?.result;
-    if (result) {
-      statusEl.textContent = `Done! Filled: ${result.filled}, Skipped: ${result.skipped}\n${result.details.join("\n")}`;
-    } else {
-      statusEl.textContent = "Done (no result returned).";
+      // 3a: Focus the element and clear its current value (in the page context)
+      const focusResults = await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        func: focusAndClearElement,
+        args: [id, value]
+      });
+
+      const focusResult = focusResults[0]?.result;
+      if (!focusResult || !focusResult.success) {
+        skipped++;
+        details.push(`${id}: ${focusResult?.reason || "focus failed"}, skipped`);
+        continue;
+      }
+
+      // 3b: For booleans (checkboxes), clicking was already done — no keystrokes needed
+      if (focusResult.action === "clicked") {
+        filled++;
+        details.push(`${id}: checked`);
+        continue;
+      }
+
+      // 3c: For text fields, send keystrokes via native messaging
+      const keystrokeResponse = await sendKeystroke(String(value));
+      console.log(`[popup] Keystroke response for ${id}:`, keystrokeResponse);
+
+      if (keystrokeResponse.status !== "ok") {
+        details.push(`${id}: keystroke failed — ${keystrokeResponse.message}`);
+        skipped++;
+        continue;
+      }
+
+      // 3d: Finalize the element (dispatch change event)
+      await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        func: finalizeElement,
+        args: [id]
+      });
+
+      filled++;
+      details.push(`${id}: filled`);
     }
+
+    statusEl.textContent = `Done! Filled: ${filled}, Skipped: ${skipped}\n${details.join("\n")}`;
   } catch (err) {
     statusEl.textContent = "Error: " + err.message;
   }
