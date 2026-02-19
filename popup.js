@@ -1,4 +1,4 @@
-const BASE_URL = "http://proply-backend-alb-1624948625.us-west-1.elb.amazonaws.com";
+const BASE_URL = "https://propdream.ai";
 const LOGIN_URL = `${BASE_URL}/users/login`;
 const FILES_QUERY_URL = `${BASE_URL}/files/query`;
 const FILES_DOWNLOAD_URL = `${BASE_URL}/files/download`;
