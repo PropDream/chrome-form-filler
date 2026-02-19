@@ -134,7 +134,21 @@
     .file-item:last-child {
       border-bottom: none;
     }
+    .file-info {
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      min-width: 0;
+    }
     .file-name {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: 200px;
+    }
+    .file-meta {
+      font-size: 10px;
+      color: #888;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
