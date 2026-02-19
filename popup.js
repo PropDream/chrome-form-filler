@@ -15,6 +15,15 @@ const statusEl = document.getElementById("status");
 const filesLoading = document.getElementById("filesLoading");
 const filesList = document.getElementById("filesList");
 
+// --- Concurrency Guard ---
+let isBusy = false;
+
+function setButtonsDisabled(disabled) {
+  filesList.querySelectorAll(".fill-file-btn, .clear-file-btn").forEach(btn => {
+    btn.disabled = disabled;
+  });
+}
+
 // --- Debug Logging ---
 
 async function debugFetch(url, options = {}) {
@@ -156,11 +165,16 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
-// --- Send keystrokes via native messaging (through background.js) ---
+// --- Send native actions via background.js → keystroke_sender.py ---
 
-function sendKeystroke(text) {
+function sendNativeAction(message, timeoutMs = 5000) {
   return new Promise((resolve) => {
-    chrome.runtime.sendMessage({ action: "type", text }, (response) => {
+    const timer = setTimeout(() => {
+      resolve({ status: "error", message: `Native action timed out after ${timeoutMs}ms` });
+    }, timeoutMs);
+
+    chrome.runtime.sendMessage(message, (response) => {
+      clearTimeout(timer);
       if (chrome.runtime.lastError) {
         resolve({ status: "error", message: chrome.runtime.lastError.message });
       } else {
@@ -170,9 +184,23 @@ function sendKeystroke(text) {
   });
 }
 
+function sendKeystroke(text, timeoutMs = 5000) {
+  return sendNativeAction({ action: "type", text }, timeoutMs);
+}
+
+function sendClick(x, y, timeoutMs = 5000) {
+  return sendNativeAction({ action: "click", x, y }, timeoutMs);
+}
+
 // --- Fill Form with a specific file ---
 
 async function fillFormWithFile(userId, fileId) {
+  if (isBusy) {
+    console.log("[popup] Fill blocked — another operation is in progress");
+    return;
+  }
+  isBusy = true;
+  setButtonsDisabled(true);
   statusEl.textContent = "Getting download URL...";
 
   try {
@@ -211,28 +239,46 @@ async function fillFormWithFile(userId, fileId) {
       const [id, value] = entries[i];
       statusEl.textContent = `Filling field ${i + 1}/${entries.length}: ${id}`;
 
-      // 3a: Focus the element and clear its current value (in the page context)
-      const focusResults = await chrome.scripting.executeScript({
+      // 3a: Prepare element — scroll into view, compute screen coordinates
+      const prepResults = await chrome.scripting.executeScript({
         target: { tabId: tab.id },
-        func: focusAndClearElement,
+        func: prepareElement,
         args: [id, value]
       });
 
-      const focusResult = focusResults[0]?.result;
-      if (!focusResult || !focusResult.success) {
+      const prep = prepResults[0]?.result;
+      if (!prep || !prep.success) {
         skipped++;
-        details.push(`${id}: ${focusResult?.reason || "focus failed"}, skipped`);
+        details.push(`${id}: ${prep?.reason || "prepare failed"}, skipped`);
         continue;
       }
 
-      // 3b: For booleans (checkboxes), clicking was already done — no keystrokes needed
-      if (focusResult.action === "clicked") {
+      // 3b: Send native OS-level click to focus/activate the element
+      const clickResponse = await sendClick(prep.x, prep.y);
+      console.log(`[popup] Click response for ${id}:`, clickResponse);
+
+      if (clickResponse.status !== "ok") {
+        details.push(`${id}: click failed — ${clickResponse.message}`);
+        skipped++;
+        continue;
+      }
+
+      // 3c: For checkboxes, the click toggled it — done
+      if (prep.action === "need_click") {
         filled++;
         details.push(`${id}: checked`);
         continue;
       }
 
-      // 3c: For text fields, send keystrokes via native messaging
+      // 3d: For text fields, clear existing value then type new value
+      // Clear existing content in the field
+      await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        func: clearElementValue,
+        args: [id]
+      });
+
+      // Type the new value via native keystrokes
       const keystrokeResponse = await sendKeystroke(String(value));
       console.log(`[popup] Keystroke response for ${id}:`, keystrokeResponse);
 
@@ -242,7 +288,7 @@ async function fillFormWithFile(userId, fileId) {
         continue;
       }
 
-      // 3d: Finalize the element (dispatch change event)
+      // 3e: Finalize the element (dispatch change event)
       await chrome.scripting.executeScript({
         target: { tabId: tab.id },
         func: finalizeElement,
@@ -256,12 +302,21 @@ async function fillFormWithFile(userId, fileId) {
     statusEl.textContent = `Done! Filled: ${filled}, Skipped: ${skipped}\n${details.join("\n")}`;
   } catch (err) {
     statusEl.textContent = "Error: " + err.message;
+  } finally {
+    isBusy = false;
+    setButtonsDisabled(false);
   }
 }
 
 // --- Clear Form with a specific file ---
 
 async function clearFormWithFile(userId, fileId) {
+  if (isBusy) {
+    console.log("[popup] Clear blocked — another operation is in progress");
+    return;
+  }
+  isBusy = true;
+  setButtonsDisabled(true);
   statusEl.textContent = "Getting download URL...";
 
   try {
@@ -289,24 +344,71 @@ async function clearFormWithFile(userId, fileId) {
     }
     const formData = await fileResponse.json();
 
-    statusEl.textContent = "Clearing...";
-
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    const entries = Object.entries(formData);
+    let cleared = 0;
+    let skipped = 0;
+    const details = [];
 
-    const results = await chrome.scripting.executeScript({
-      target: { tabId: tab.id },
-      func: clearForm,
-      args: [formData]
-    });
+    // Step 3: Process each field one at a time with native clicks
+    for (let i = 0; i < entries.length; i++) {
+      const [id, value] = entries[i];
+      statusEl.textContent = `Clearing field ${i + 1}/${entries.length}: ${id}`;
 
-    const result = results[0]?.result;
-    if (result) {
-      statusEl.textContent = `Cleared! Cleared: ${result.cleared}, Skipped: ${result.skipped}\n${result.details.join("\n")}`;
-    } else {
-      statusEl.textContent = "Done (no result returned).";
+      // 3a: Prepare element — scroll into view, compute screen coordinates
+      const prepResults = await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        func: prepareClearElement,
+        args: [id, value]
+      });
+
+      const prep = prepResults[0]?.result;
+      if (!prep || !prep.success) {
+        skipped++;
+        details.push(`${id}: ${prep?.reason || "prepare failed"}, skipped`);
+        continue;
+      }
+
+      // 3b: Send native OS-level click
+      const clickResponse = await sendClick(prep.x, prep.y);
+      console.log(`[popup] Click response for ${id}:`, clickResponse);
+
+      if (clickResponse.status !== "ok") {
+        details.push(`${id}: click failed — ${clickResponse.message}`);
+        skipped++;
+        continue;
+      }
+
+      // 3c: For checkboxes, the click unchecked it — done
+      if (prep.action === "need_click") {
+        cleared++;
+        details.push(`${id}: unchecked`);
+        continue;
+      }
+
+      // 3d: For text fields, clear the value after clicking
+      const clearResults = await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        func: clearFieldValue,
+        args: [id]
+      });
+
+      const clearResult = clearResults[0]?.result;
+      if (clearResult?.success) {
+        cleared++;
+        details.push(`${id}: cleared`);
+      } else {
+        skipped++;
+        details.push(`${id}: ${clearResult?.reason || "clear failed"}, skipped`);
+      }
     }
+
+    statusEl.textContent = `Cleared! Cleared: ${cleared}, Skipped: ${skipped}\n${details.join("\n")}`;
   } catch (err) {
     statusEl.textContent = "Error: " + err.message;
+  } finally {
+    isBusy = false;
+    setButtonsDisabled(false);
   }
 }
 
