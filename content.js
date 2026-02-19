@@ -69,6 +69,7 @@ async function fillForm(FORM_DATA) {
         details.push(`${id}: already checked, skipped`);
         continue;
       }
+      el.focus();
       el.click();
     } else {
       if (el.value === value) {
@@ -76,31 +77,81 @@ async function fillForm(FORM_DATA) {
         details.push(`${id}: already has correct value, skipped`);
         continue;
       }
-      el.click();
-      el.focus();
-      // Select all and backspace to clear existing value
-      el.dispatchEvent(new KeyboardEvent("keydown", { key: "a", code: "KeyA", ctrlKey: true, bubbles: true }));
-      el.select();
-      el.dispatchEvent(new KeyboardEvent("keyup", { key: "a", code: "KeyA", ctrlKey: true, bubbles: true }));
-      el.dispatchEvent(new KeyboardEvent("keydown", { key: "Backspace", code: "Backspace", bubbles: true }));
-      el.value = "";
-      el.dispatchEvent(new Event("input", { bubbles: true }));
-      el.dispatchEvent(new KeyboardEvent("keyup", { key: "Backspace", code: "Backspace", bubbles: true }));
-      await sleep(200);
-      for (const char of value) {
-        el.dispatchEvent(new KeyboardEvent("keydown", { key: char, bubbles: true }));
-        el.dispatchEvent(new KeyboardEvent("keypress", { key: char, bubbles: true }));
-        el.value += char;
-        el.dispatchEvent(new Event("input", { bubbles: true }));
-        el.dispatchEvent(new KeyboardEvent("keyup", { key: char, bubbles: true }));
-        await sleep(200);
-      }
-      el.dispatchEvent(new Event("change", { bubbles: true }));
-    }
 
+      // Simulate focusin event
+      const focusinEvent = new FocusEvent('focusin', {
+        bubbles: true,
+        cancelable: false,
+      });
+      //el.dispatchEvent(focusinEvent);
+      
+
+    // Get the position of the target element to set appropriate event coordinates
+    const rect = el.getBoundingClientRect();
+    const clientX = rect.left + rect.width / 2;
+    const clientY = rect.top + rect.height / 2;
+
+    // Create a new mouse event
+    const mouseMoveEvent = new MouseEvent('mousemove', {
+        view: window,
+        bubbles: true,
+        cancelable: true,
+        clientX: clientX,
+        clientY: clientY
+    });
+
+    // Dispatch the event on the target element
+    el.dispatchEvent(mouseMoveEvent);
+
+    const pointerMoveEvent = new PointerEvent('pointermove', {
+      view: window,
+      bubbles: true, // Events bubble up through the DOM
+      cancelable: true,
+      clientX: clientX,
+      clientY: clientY,
+      pointerId: 1,
+      pointerType: "mouse",
+      target: el,
+      type: "pointerover",
+      which: 0
+    });
+
+    el.dispatchEvent(pointerMoveEvent);
+      el.focus();
+      el.click();
+      el.value = value
+      // Dispatch the input event
+      el.dispatchEvent(new Event('input', { bubbles: true}));
+      // Dispatch the change event
+      el.dispatchEvent(new Event('change', { bubbles: true}));
+      //el.focus();
+      //el.select();
+
+      // Dispatch a 'click' event to simulate user interaction
+      const clickEvent = new MouseEvent('click', {
+        view: window,
+        bubbles: true,
+	cancelable: true,
+	button: 0,
+      });
+      //el.dispatchEvent(clickEvent);
+
+      // Simulate focusout event
+      const focusoutEvent = new FocusEvent('focusout', {
+        bubbles: true,
+        cancelable: false,
+      });
+      //el.dispatchEvent(focusoutEvent);
+    }
     filled++;
-    details.push(`${id}: filled`);
+    details.push(`${id}: filled with ${el.value}`);
+    await sleep(1000);
   }
 
   return { filled, skipped, details };
 }
+
+
+
+
+
