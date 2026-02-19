@@ -56,6 +56,17 @@ chrome-form-filler/
 
 ## Extension Installation
 
+### From ZIP download
+
+1. Download `chrome-form-filler.zip` from the [latest release](https://github.com/PropDream/chrome-form-filler/releases)
+2. Unzip the file to a folder on your computer
+3. Open Chrome and go to `chrome://extensions`
+4. Enable **Developer mode** (toggle in the top-right corner)
+5. Click **Load unpacked** and select the unzipped folder
+6. The extension icon will appear in your toolbar
+
+### From source
+
 1. Clone this repository:
    ```bash
    git clone https://github.com/PropDream/chrome-form-filler.git
@@ -63,8 +74,7 @@ chrome-form-filler/
 2. Open Chrome and go to `chrome://extensions`
 3. Enable **Developer mode** (toggle in the top-right corner)
 4. Click **Load unpacked** and select the `chrome-form-filler` folder
-
-The extension icon will appear in your toolbar.
+5. The extension icon will appear in your toolbar
 
 ## Usage
 
