@@ -124,7 +124,7 @@ async function fetchAndDisplayFiles(userId) {
       html += '<div class="project-group">';
       html += `<div class="project-header">${escapeHtml(project)} <span class="file-count">(${projectFiles.length})</span></div>`;
       for (const file of projectFiles) {
-        const clientName = file.client_name || "";
+        const clientName = file.client?.name || "";
         const projectName = file.project_name || "";
         const metaParts = [clientName, projectName].filter(Boolean);
         const metaLine = metaParts.length > 0
