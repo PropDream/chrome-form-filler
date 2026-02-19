@@ -124,8 +124,17 @@ async function fetchAndDisplayFiles(userId) {
       html += '<div class="project-group">';
       html += `<div class="project-header">${escapeHtml(project)} <span class="file-count">(${projectFiles.length})</span></div>`;
       for (const file of projectFiles) {
+        const clientName = file.client_name || "";
+        const projectName = file.project_name || "";
+        const metaParts = [clientName, projectName].filter(Boolean);
+        const metaLine = metaParts.length > 0
+          ? `<span class="file-meta">${escapeHtml(metaParts.join(" / "))}</span>`
+          : "";
         html += `<div class="file-item" data-file-id="${escapeHtml(file.file_id)}">
-          <span class="file-name" title="${escapeHtml(file.file_name)}">${escapeHtml(file.file_name)}</span>
+          <span class="file-info">
+            <span class="file-name" title="${escapeHtml(file.file_name)}">${escapeHtml(file.file_name)}</span>
+            ${metaLine}
+          </span>
           <span class="file-actions">
             <button class="fill-file-btn" title="Fill form with this file">Fill</button>
             <button class="clear-file-btn" title="Clear form fields for this file">Clear</button>
