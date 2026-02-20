@@ -1,7 +1,10 @@
 const BASE_URL = "https://propdream.ai";
-const LOGIN_URL = `${BASE_URL}/users/login`;
-const FILES_QUERY_URL = `${BASE_URL}/files/query`;
-const FILES_DOWNLOAD_URL = `${BASE_URL}/files/download`;
+// Keep these paths in sync with proply-backend route definitions:
+//   auth_handler.py  -> /users/login   (registered under /api prefix in app.py)
+//   files_handler.py -> /files/query, /files/download
+const LOGIN_URL = `${BASE_URL}/api/users/login`;
+const FILES_QUERY_URL = `${BASE_URL}/api/files/query`;
+const FILES_DOWNLOAD_URL = `${BASE_URL}/api/files/download`;
 
 const loginSection = document.getElementById("loginSection");
 const loggedInSection = document.getElementById("loggedInSection");
@@ -33,7 +36,9 @@ async function debugFetch(url, options = {}) {
 
   const response = await fetch(url, options);
   const clone = response.clone();
-  const responseBody = await clone.json().catch(() => clone.text());
+  const text = await clone.text();
+  let responseBody;
+  try { responseBody = JSON.parse(text); } catch { responseBody = text; }
   console.log(`[proply] <-- ${response.status} ${url}`, responseBody);
 
   return response;
