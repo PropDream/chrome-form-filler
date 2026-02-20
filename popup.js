@@ -1,4 +1,7 @@
 const BASE_URL = "https://propdream.ai";
+// Keep these paths in sync with proply-backend route definitions:
+//   auth_handler.py  -> /users/login   (registered under /api prefix in app.py)
+//   files_handler.py -> /files/query, /files/download
 const LOGIN_URL = `${BASE_URL}/api/users/login`;
 const FILES_QUERY_URL = `${BASE_URL}/api/files/query`;
 const FILES_DOWNLOAD_URL = `${BASE_URL}/api/files/download`;
